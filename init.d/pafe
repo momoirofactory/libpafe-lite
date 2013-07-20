@@ -1,0 +1,71 @@
+#!/bin/bash
+#
+# pafed		Startup script for the Pafe
+#
+# chkconfig: 345 99 01
+# description: Runs the pasori scan daemon 
+# processname: /var/libpafe/pafe
+# config: /etc/pafe.conf
+
+# We require the /etc/delegeted.conf file, but supply it in the package, so it
+# should always be there.
+progname=pafe
+lockfile=/var/lock/subsys/pafe
+prog=/var/libpafe/pafe
+conffile=/etc/pafe.conf
+[ -f $conffile ] || exit $?
+
+# Source function library.
+. /etc/init.d/functions
+
+RETVAL=0
+
+start() {
+	echo -n $"Starting $progname: "
+	daemon $prog -c $conffile
+	RETVAL=$?
+	echo
+	[ $RETVAL = 0 ] && touch $lockfile
+	return $RETVAL
+}
+
+stop() {
+	echo -n $"Stopping $progname: "
+	killproc $prog
+	RETVAL=$?
+	echo
+	[ $RETVAL = 0 ] && rm -f $lockfile
+	return $RETVAL
+}
+
+# See how we were called.
+case "$1" in
+  start)
+        start
+	;;
+  stop)
+        stop
+	;;
+  status)
+	status $prog
+	RETVAL=$?
+	;;
+  restart)
+	stop
+	start
+	;;
+  condrestart)
+        if [ -f $lockfile ]; then
+	    stop
+	    start
+	fi
+	;;
+  reload)
+	action $"Reloading $progname:" killall -HUP $prog
+	;;
+  *)
+ 	echo $"Usage: $0 {start|stop|restart|reload|condrestart|status}"
+	exit 1
+esac
+
+exit $RETVAL

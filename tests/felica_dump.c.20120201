@@ -1,0 +1,120 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <mysql.h>
+#include <time.h>
+#include "libpafe.h"
+
+const static char* host = "localhost";
+const static char* user = "pafe";
+const static char* pass = "pafe";
+const static char* db = "pafe";
+
+static time_t playedtime = 0;
+
+static void playsound(void);
+
+void formatid(char *buf, uint8 *p) {
+	sprintf(buf, "%02X%02X%02X%02X%02X%02X%02X%02X",
+		*p++, *p++, *p++, *p++, *p++, *p++, *p++, *p++);
+}
+
+int main(void) {
+	char _idm[20], _pmm[20];
+	while(1) {
+		pasori *p = pasori_open();
+		if (!p) {
+			sleep(1);
+			continue;
+		}
+
+		// S320は無くても動作可 S370はpasori_init必要
+		pasori_init(p);
+
+		felica *f = felica_polling(p, FELICA_POLLING_ANY, 0, 0);
+		if (f) {
+			char idm[20], pmm[20];
+			formatid(idm, f->IDm);
+			formatid(pmm, f->PMm);
+			if (strncmp(_idm, idm, 16) || strncmp(_pmm, pmm, 16)) {
+				writedb(idm, pmm);
+				free(f);
+				strcpy(_idm, idm);
+				strcpy(_pmm, pmm);
+				printf("%s:%s\n", idm, pmm);
+			}
+			playsound();
+		}
+		pasori_close(p);
+	}
+	return 0;
+}
+
+void getname(char* idm, char* pmm, char* name) {
+	
+	MYSQL *mysql = mysql_init(NULL);
+	if (!mysql) {
+		printf("mysql init error\n");
+		exit(-1);
+	}
+	
+	if (!mysql_real_connect(mysql, host, user, pass, db, 0, NULL, 0)) {
+		printf(stderr, "Failed to connect to database %s\n", (char*)mysql_error(mysql));
+	}
+	
+	char query[128];
+	sprintf(query, "select name from user where idm = %s and pmm = %s", idm, pmm);
+	int r = mysql_query(mysql, query);
+	if (r) {
+		printf("error: %s\n", (char*)mysql_error(mysql));
+	} else {
+		MYSQL_RES *result = mysql_store_result(mysql);
+		
+	}
+		
+	mysql_close(mysql);
+	
+}
+
+void writedb(char* idm, char* pmm) {
+	char date[20];
+	char name[64];
+
+	getname(idm, pmm, name);
+
+	MYSQL *mysql = mysql_init(NULL);
+	if (!mysql) {
+		printf("mysql init error\n");
+		exit(-1);
+	}
+
+	time_t timer;
+	struct tm *t;
+	time(&timer);
+	t = localtime(&timer);
+	sprintf(date, "%04d-%02d-%02d %02d:%02d:%02d", 2012, t->tm_mon+1, t->tm_mday, t->tm_hour, t->tm_min, t->tm_sec);
+	if (!mysql_real_connect(mysql, host, user, pass, db, 0, NULL, 0)) {
+		printf(stderr, "Failed to connect to database %s\n", (char*)mysql_error(mysql));
+	}
+	char query[128];
+	sprintf(query,  "insert into data (idm, pmm, name, create_t) values"
+			" ('%s', '%s', '%s', '%s')", idm, pmm, name, date);
+	int r = mysql_query(mysql, query);
+	if (r) {
+		printf("error: %s\n", (char*)mysql_error(mysql));
+	}
+		
+	mysql_close(mysql);
+}
+
+// goal: piyopiyo async.
+static void playsound(void) {
+	time_t timer;
+	time(&timer);
+
+	if (playedtime + 1 < timer) {
+		const char* cmd = "aplay se_sad03.wav";
+		system(cmd);
+		playedtime = timer;
+	}
+}
